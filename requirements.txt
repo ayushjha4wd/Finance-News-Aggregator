@@ -1,0 +1,7 @@
+flask
+flask-cors
+requests
+numpy
+torch
+faiss-cpu
+sentence-transformers
