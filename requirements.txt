@@ -1,8 +1,7 @@
-flask==3.0.0
-flask-cors==4.0.0
-torch==2.2.0
-transformers==4.39.0
-sentence-transformers==2.2.2
-numpy==1.26.4
-faiss-cpu==1.7.4
-requests==2.31.0
+flask
+flask-cors
+requests
+sentence-transformers
+faiss-cpu
+numpy
+torch
