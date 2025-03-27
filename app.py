@@ -8,99 +8,71 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sentence_transformers import SentenceTransformer
 
-# ✅ Set Hugging Face Cache to a writable directory
-os.environ["TRANSFORMERS_CACHE"] = "/tmp/huggingface_cache"
+# ✅ Set Hugging Face Cache Directory
 os.environ["HF_HOME"] = "/tmp/huggingface_cache"
 os.environ["HF_HUB_CACHE"] = "/tmp/huggingface_cache"
-
-# ✅ Ensure the directory exists
 if not os.path.exists("/tmp/huggingface_cache"):
-    os.makedirs("/tmp/huggingface_cache", exist_ok=True)
+    os.makedirs("/tmp/huggingface_cache")
 
 # ✅ Initialize Flask App
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Select a Transformer Model
+# ✅ Load Sentence Transformer Model
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model_names = [
-    "sentence-transformers/all-mpnet-base-v2",
-    "sentence-transformers/paraphrase-MiniLM-L6-v2",
-    "sentence-transformers/multi-qa-mpnet-base-dot-v1"
-]
+model_name = "sentence-transformers/all-mpnet-base-v2"
+model = SentenceTransformer(model_name).to(device)
+print(f"✅ Loaded model: {model_name}")
 
-model = None
-for model_name in model_names:
-    try:
-        model = SentenceTransformer(model_name, cache_folder="/tmp/huggingface_cache").to(device)
-        print(f"✅ Loaded model: {model_name}")
-        break
-    except Exception as e:
-        print(f"⚠️ Failed to load {model_name}: {str(e)}")
-
-if model is None:
-    raise RuntimeError("❌ No suitable SentenceTransformer model could be loaded.")
-
-# ✅ Initialize FAISS Index
-embedding_dim = model.get_sentence_embedding_dimension()
-index = faiss.IndexFlatL2(embedding_dim)
+# ✅ FAISS Index for News Articles
+d = 768  # Model embedding size
+index = faiss.IndexFlatL2(d)
 news_articles = []
 
-# ✅ Set Your News API Key
-NEWS_API_KEY = "352f67b35a544f408c58c74c654cfd7e"
-NEWS_API_URL = "https://newsapi.org/v2/top-headlines?category=business&language=en&apiKey=" + NEWS_API_KEY
+# ✅ Fetch & Index News
+def fetch_and_index_news():
+    global news_articles
+    API_KEY = "352f67b35a544f408c58c74c654cfd7e"
+    URL = f"https://newsapi.org/v2/top-headlines?category=business&language=en&apiKey={API_KEY}"
 
-# ✅ Fetch News from API
-def fetch_news():
-    response = requests.get(NEWS_API_URL)
+    response = requests.get(URL)
     if response.status_code == 200:
-        return response.json().get("articles", [])
-    return []
+        data = response.json()
+        articles = data.get("articles", [])
+        
+        news_articles.clear()
+        vectors = []
+        
+        for article in articles:
+            title = article.get("title", "")
+            content = article.get("description", "")
+            full_text = f"{title}. {content}"
+            
+            news_articles.append(full_text)
+            embedding = model.encode(full_text, convert_to_numpy=True)
+            vectors.append(embedding)
+        
+        if vectors:
+            index.add(np.array(vectors))
+            print(f"✅ Indexed {len(news_articles)} news articles.")
+    else:
+        print("❌ Failed to fetch news:", response.status_code)
 
-# ✅ Index News Articles
-def index_news():
-    global news_articles, index
-    news_articles = fetch_news()
-    index.reset()
+fetch_and_index_news()
 
-    if not news_articles:
-        print("⚠️ No news articles fetched.")
-        return
-    
-    # Extract headlines for embedding
-    headlines = [article["title"] for article in news_articles]
-    embeddings = model.encode(headlines, convert_to_numpy=True)
-
-    # Add embeddings to FAISS index
-    index.add(embeddings)
-    print(f"✅ Indexed {len(headlines)} news articles.")
-
-# ✅ Search News Articles
+# ✅ Search API Endpoint
 @app.route("/search", methods=["POST"])
 def search_news():
-    data = request.json
-    query = data.get("query", "")
-
+    query = request.json.get("query", "")
     if not query:
-        return jsonify({"error": "Query is required"}), 400
+        return jsonify({"error": "Query cannot be empty"}), 400
 
-    query_embedding = model.encode([query], convert_to_numpy=True)
-    D, I = index.search(query_embedding, k=5)
+    query_embedding = model.encode(query, convert_to_numpy=True).reshape(1, -1)
+    D, I = index.search(query_embedding, 5)
 
-    results = []
-    for i in I[0]:
-        if i < len(news_articles):
-            results.append(news_articles[i])
+    results = [{"news": news_articles[i], "score": float(D[0][j])} for j, i in enumerate(I[0]) if i < len(news_articles)]
+    return jsonify({"query": query, "results": results})
 
-    return jsonify(results)
-
-# ✅ Refresh News Index
-@app.route("/refresh", methods=["GET"])
-def refresh_news():
-    index_news()
-    return jsonify({"message": "News index updated", "total_articles": len(news_articles)})
-
-# ✅ Start the Application
+# ✅ Run Flask App
 if __name__ == "__main__":
-    index_news()
     app.run(host="0.0.0.0", port=5000, debug=True)
