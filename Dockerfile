@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/cache && chmod -R 777 /app/cache
+# Create cache and data directories with write permissions
+RUN mkdir -p /app/cache /app/data && chmod -R 777 /app/cache /app/data
 
 EXPOSE 7860
 
