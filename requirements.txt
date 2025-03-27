@@ -7,3 +7,5 @@ torch==2.2.0
 faiss-cpu==1.8.0
 numpy==1.26.4
 tensorflow==2.15.0
+sqlite3  # Built-in with Python, no need to install
+flask-limiter==3.5.0
