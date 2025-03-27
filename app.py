@@ -8,28 +8,28 @@ from flask_cors import CORS
 from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 
-# ✅ Initialize Flask App
+# Initialize Flask App
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Device Setup
+# Device Setup
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# ✅ Load Hugging Face Models
-embedding_model = SentenceTransformer("BAAI/bge-large-en").to(device)
+# Load Hugging Face Models with custom cache directory
+embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5", cache_folder="/app/cache").to(device)
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn", device=0 if torch.cuda.is_available() else -1)
 classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli", device=0 if torch.cuda.is_available() else -1)
 
-# ✅ NewsAPI Key 
+# NewsAPI Key
 NEWS_API_KEY = "352f67b35a544f408c58c74c654cfd7e"
 NEWS_API_URL = "https://newsapi.org/v2/everything"
 
-# ✅ FAISS Vector Database Setup
+# FAISS Vector Database Setup
 vector_dim = embedding_model.get_sentence_embedding_dimension()
 index = faiss.IndexFlatL2(vector_dim)
 news_data = []  # Stores news articles with category, summary, and embedding
 
-# ✅ Fetch News from API
+# Fetch News from API
 def fetch_news():
     params = {
         "q": "finance",
@@ -44,16 +44,16 @@ def fetch_news():
         print(f"⚠️ Error Fetching News: {response.status_code}, {response.text}")
         return []
 
-# ✅ Summarize News Articles
+# Summarize News Articles
 def summarize_text(text, max_length=100):
     try:
         summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
         return summary[0]['summary_text']
     except Exception as e:
         print(f"⚠️ Summarization Error: {e}")
-        return text[:max_length]  # Return truncated text if summarization fails
+        return text[:max_length]  # Fallback to truncated text
 
-# ✅ Categorize News Using Zero-Shot Classification
+# Categorize News Using Zero-Shot Classification
 def categorize_news(text):
     labels = ["Stock Market", "Cryptocurrency", "Forex & Currency", "Economics & Policy", "Personal Finance"]
     try:
@@ -63,7 +63,7 @@ def categorize_news(text):
         print(f"⚠️ Classification Error: {e}")
         return "Uncategorized"
 
-# ✅ Fetch, Process, and Store News
+# Fetch, Process, and Store News
 def process_and_store_news():
     global news_data, index
     articles = fetch_news()
@@ -89,7 +89,7 @@ def process_and_store_news():
 
     return len(news_data)
 
-# ✅ Search News with FAISS
+# Search News with FAISS
 def search_news(query, k=5):
     if not news_data:
         return {"message": "⚠️ No news indexed. Please fetch news first."}
@@ -104,7 +104,7 @@ def search_news(query, k=5):
 
     return results if results else {"message": "⚠️ No relevant news found."}
 
-# ✅ Flask API Endpoints
+# Flask API Endpoints
 @app.route("/")
 def home():
     return jsonify({
@@ -124,6 +124,6 @@ def search():
         return jsonify({"error": "Missing 'query' parameter"}), 400
     return jsonify(search_news(query))
 
-# ✅ Run Flask App (Without ngrok for Local Testing)
+# Run Flask App
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
