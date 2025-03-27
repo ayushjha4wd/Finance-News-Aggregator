@@ -1,7 +1,8 @@
-flask
-flask-cors
-requests
-numpy
-torch
-faiss-cpu
+gradio
+transformers
 sentence-transformers
+faiss-cpu
+requests
+beautifulsoup4
+pandas
+newspaper3k
