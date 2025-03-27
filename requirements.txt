@@ -1,7 +1,9 @@
 flask
 flask-cors
 requests
-sentence-transformers
 faiss-cpu
 numpy
 torch
+sentence-transformers
+transformers
+huggingface-hub
