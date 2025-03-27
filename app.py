@@ -15,8 +15,8 @@ CORS(app)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2").to(device)
 
-# ✅ NewsAPI Key (Replace with your own)
-NEWS_API_KEY = "YOUR_NEWS_API_KEY"
+# ✅ NewsAPI Key 
+NEWS_API_KEY = "352f67b35a544f408c58c74c654cfd7e"
 API_URL = f"https://newsapi.org/v2/everything?q=finance&language=en&apiKey={NEWS_API_KEY}"
 
 # ✅ Define News Categories
