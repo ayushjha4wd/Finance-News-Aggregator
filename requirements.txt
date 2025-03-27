@@ -7,3 +7,5 @@ torch
 sentence-transformers
 transformers
 huggingface-hub
+uvicorn  
+scipy
