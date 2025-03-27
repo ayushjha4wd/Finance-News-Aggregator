@@ -1,18 +1,33 @@
-# Use an official lightweight Python image
+# Use official Python 3.9 slim image as base
 FROM python:3.9-slim
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy necessary files
-COPY requirements.txt .
-COPY app.py .
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CACHE_DIR=/app/cache
 
-# Install dependencies
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the application port
-EXPOSE 7860
+# Copy application code
+COPY app.py .
+
+# Create cache directory and set permissions
+RUN mkdir -p $CACHE_DIR && chmod -R 777 $CACHE_DIR
+
+# Expose port 5000
+EXPOSE 5000
 
 # Run the Flask app
 CMD ["python", "app.py"]
