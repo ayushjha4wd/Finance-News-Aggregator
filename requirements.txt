@@ -7,3 +7,4 @@ beautifulsoup4
 pandas
 newspaper3k
 flask
+flask_cors
