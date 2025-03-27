@@ -3,6 +3,7 @@ import json
 import faiss
 import numpy as np
 import torch
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sentence_transformers import SentenceTransformer
@@ -15,10 +16,14 @@ CORS(app)
 # Device Setup
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+# Set custom cache directory
+CACHE_DIR = "./cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
+
 # Load Hugging Face Models with custom cache directory
-embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5", cache_folder="/app/cache").to(device)
-summarizer = pipeline("summarization", model="facebook/bart-large-cnn", device=0 if torch.cuda.is_available() else -1)
-classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli", device=0 if torch.cuda.is_available() else -1)
+embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5", cache_folder=CACHE_DIR).to(device)
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn", from_tf=True, cache_dir=CACHE_DIR)
+classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli", device=0 if torch.cuda.is_available() else -1, cache_dir=CACHE_DIR)
 
 # NewsAPI Key
 NEWS_API_KEY = "352f67b35a544f408c58c74c654cfd7e"
@@ -124,6 +129,6 @@ def search():
         return jsonify({"error": "Missing 'query' parameter"}), 400
     return jsonify(search_news(query))
 
-# Run Flask App
+# Run Flask App (Hugging Face Spaces handles port assignment)
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=7860, debug=True)
