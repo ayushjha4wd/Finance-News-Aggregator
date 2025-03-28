@@ -34,12 +34,12 @@ logger.info(f"Using device: {device}")
 CACHE_DIR = "./cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Load Hugging Face Models
+# Load Fast Models
 try:
-    embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5", cache_folder=CACHE_DIR).to(device)
-    summarizer = pipeline("summarization", model="facebook/bart-large-cnn", from_tf=True, cache_dir=CACHE_DIR)
-    classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli", device=0 if torch.cuda.is_available() else -1, cache_dir=CACHE_DIR)
-    logger.info("Models loaded successfully")
+    embedding_model = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=CACHE_DIR).to(device)
+    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6", cache_dir=CACHE_DIR)
+    classifier = pipeline("zero-shot-classification", model="cross-encoder/nli-distilroberta-base", device=0 if torch.cuda.is_available() else -1, cache_dir=CACHE_DIR)
+    logger.info("Fast models loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load models: {str(e)}")
     raise
@@ -49,7 +49,7 @@ NEWS_API_KEY = "352f67b35a544f408c58c74c654cfd7e"
 NEWS_API_URL = "https://newsapi.org/v2/everything"
 
 # FAISS Vector Database Setup
-vector_dim = embedding_model.get_sentence_embedding_dimension()
+vector_dim = embedding_model.get_sentence_embedding_dimension()  # Now 384 for MiniLM
 index = faiss.IndexFlatL2(vector_dim)
 
 # Initialize SQLite DB
@@ -70,7 +70,10 @@ def fetch_news():
     try:
         response = requests.get(NEWS_API_URL, params=params, timeout=10)
         response.raise_for_status()
-        return response.json().get("articles", [])
+        articles = response.json().get("articles", [])
+        if not articles:
+            logger.warning("No articles returned from NewsAPI")
+        return articles
     except requests.RequestException as e:
         logger.error(f"Error fetching news: {str(e)}")
         raise
@@ -78,10 +81,12 @@ def fetch_news():
 # Summarize News Articles
 def summarize_text(text, max_length=100):
     try:
-        summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
+        input_length = len(text.split())
+        max_length = min(max_length, input_length // 2)  # Adjust dynamically
+        summary = summarizer(text, max_length=max_length, min_length=10, do_sample=False)
         return summary[0]['summary_text']
     except Exception as e:
-        logger.warning(f"Summarization error: {str(e)}")
+        logger.warning(f"Summarization error: {str(e)}. Using fallback.")
         return text[:max_length]
 
 # Categorize News
@@ -91,7 +96,7 @@ def categorize_news(text):
         result = classifier(text, candidate_labels=labels)
         return result["labels"][0]
     except Exception as e:
-        logger.warning(f"Classification error: {str(e)}")
+        logger.warning(f"Classification error: {str(e)}. Using fallback.")
         return "Uncategorized"
 
 # Process and Store News
@@ -99,24 +104,35 @@ def process_and_store_news():
     global index
     try:
         articles = fetch_news()
+        if not articles:
+            return 0
         clear_news()
         index.reset()
         logger.info(f"Fetched {len(articles)} articles")
 
+        processed_count = 0
         for article in articles:
-            title = article.get("title", "No Title")
-            description = article.get("description", "")
-            url = article.get("url", "#")
-            content = f"{title}. {description}"
+            try:
+                title = article.get("title", "No Title")
+                description = article.get("description", "") or ""
+                url = article.get("url", "#")
+                content = f"{title}. {description}"
 
-            summary = summarize_text(content)
-            category = categorize_news(summary)
-            embedding = embedding_model.encode(summary, convert_to_tensor=True).cpu().detach().numpy().reshape(1, -1)
+                summary = summarize_text(content)
+                category = categorize_news(summary)
+                embedding = embedding_model.encode(summary, convert_to_tensor=True).cpu().detach().numpy()
+                if embedding.shape != (vector_dim,):
+                    embedding = embedding.reshape(1, -1)
 
-            save_news(title, description, url, summary, category, embedding)
-            index.add(embedding)
+                save_news(title, description, url, summary, category, embedding)
+                index.add(embedding)
+                processed_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to process article '{title}': {str(e)}")
+                continue
 
-        return len(articles)
+        logger.info(f"Processed and stored {processed_count} articles")
+        return processed_count
     except Exception as e:
         logger.error(f"Error in process_and_store_news: {str(e)}")
         raise
@@ -134,7 +150,9 @@ def search_news(query, k=5):
         results = []
         for i in I[0]:
             if 0 <= i < len(news_data):
-                results.append({k: v for k, v in news_data[i].items() if k != "embedding"})
+                article = news_data[i]
+                embedding = np.frombuffer(article["embedding"], dtype=np.float32)
+                results.append({k: v for k, v in article.items() if k != "embedding"})
 
         return results if results else {"message": "⚠️ No relevant news found."}
     except Exception as e:
