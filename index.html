@@ -1,87 +1,131 @@
 <!DOCTYPE html>
-     <html lang="en">
-     <head>
-         <meta charset="UTF-8">
-         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-         <title>Finance News Aggregator</title>
-         <link rel="stylesheet" href="/static/style.css">
-         <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-     </head>
-     <body>
-         <header>
-             <h1>Finance News Aggregator</h1>
-             <p>Your source for summarized financial insights</p>
-         </header>
-         <main>
-             <section class="controls">
-                 <button id="fetchBtn" onclick="fetchNews()">Fetch Latest News</button>
-                 <div class="search-bar">
-                     <input type="text" id="searchQuery" placeholder="Search news (e.g., bitcoin)">
-                     <button id="searchBtn" onclick="searchNews()">Search</button>
-                 </div>
-             </section>
-             <section id="results" class="news-container"></section>
-         </main>
-         <footer>
-             <p>© 2025 Finance News Aggregator. Powered by xAI & Hugging Face.</p>
-         </footer>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance News Aggregator</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <h1>Finance News Aggregator</h1>
+        <p>Your source for summarized financial insights</p>
+    </header>
+    <main>
+        <section class="controls">
+            <button id="fetchBtn" onclick="fetchNews()">Fetch Latest News</button>
+            <div class="search-bar">
+                <input type="text" id="searchQuery" placeholder="Search news (e.g., bitcoin)">
+                <button id="searchBtn" onclick="searchNews()">Search</button>
+            </div>
+        </section>
+        <section id="results" class="news-container"></section>
+        <section class="chat-container">
+            <h2>Finance Chatbot</h2>
+            <div id="chatHistory" class="chat-history"></div>
+            <div class="chat-input">
+                <input type="text" id="chatQuery" placeholder="Ask a finance question (e.g., What’s the stock market trend?)">
+                <button id="chatBtn" onclick="sendChat()">Send</button>
+            </div>
+        </section>
+    </main>
+    <footer>
+        <p>© 2025 Finance News Aggregator. Powered by xAI & Hugging Face.</p>
+    </footer>
 
-         <script>
-             function fetchNews() {
-                 const resultsDiv = document.getElementById('results');
-                 const fetchBtn = document.getElementById('fetchBtn');
-                 fetchBtn.disabled = true;
-                 resultsDiv.innerHTML = '<p class="loading">Fetching news...</p>';
-                 
-                 fetch('/api/fetch_news')
-                     .then(response => response.json())
-                     .then(data => {
-                         resultsDiv.innerHTML = `<p class="success">${data.message}</p>`;
-                         fetchBtn.disabled = false;
-                     })
-                     .catch(error => {
-                         resultsDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-                         fetchBtn.disabled = false;
-                     });
-             }
+    <script>
+        function fetchNews() {
+            const resultsDiv = document.getElementById('results');
+            const fetchBtn = document.getElementById('fetchBtn');
+            fetchBtn.disabled = true;
+            resultsDiv.innerHTML = '<p class="loading">Fetching news...</p>';
+            
+            fetch('/api/fetch_news')
+                .then(response => response.json())
+                .then(data => {
+                    resultsDiv.innerHTML = `<p class="success">${data.message}</p>`;
+                    fetchBtn.disabled = false;
+                })
+                .catch(error => {
+                    resultsDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                    fetchBtn.disabled = false;
+                });
+        }
 
-             function searchNews() {
-                 const query = document.getElementById('searchQuery').value.trim();
-                 const resultsDiv = document.getElementById('results');
-                 const searchBtn = document.getElementById('searchBtn');
-                 if (!query) {
-                     resultsDiv.innerHTML = '<p class="error">Please enter a search term.</p>';
-                     return;
-                 }
-                 
-                 searchBtn.disabled = true;
-                 resultsDiv.innerHTML = '<p class="loading">Searching...</p>';
-                 
-                 fetch(`/api/search?query=${encodeURIComponent(query)}`)
-                     .then(response => response.json())
-                     .then(data => {
-                         let html = '';
-                         if (data.message) {
-                             html = `<p class="info">${data.message}</p>`;
-                         } else {
-                             data.forEach(item => {
-                                 html += `
-                                     <div class="news-item">
-                                         <h3>${item.title}</h3>
-                                         <p class="category">${item.category}</p>
-                                         <p>${item.summary}</p>
-                                         <a href="${item.url}" target="_blank" class="read-more">Read Full Article</a>
-                                     </div>`;
-                             });
-                         }
-                         resultsDiv.innerHTML = html;
-                         searchBtn.disabled = false;
-                     })
-                     .catch(error => {
-                         resultsDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-                         searchBtn.disabled = false;
-                     });
-             }
-         </script>
-     </body>
-     </html>
+        function searchNews() {
+            const query = document.getElementById('searchQuery').value.trim();
+            const resultsDiv = document.getElementById('results');
+            const searchBtn = document.getElementById('searchBtn');
+            if (!query) {
+                resultsDiv.innerHTML = '<p class="error">Please enter a search term.</p>';
+                return;
+            }
+            
+            searchBtn.disabled = true;
+            resultsDiv.innerHTML = '<p class="loading">Searching...</p>';
+            
+            fetch(`/api/search?query=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    let html = '';
+                    if (data.message) {
+                        html = `<p class="info">${data.message}</p>`;
+                    } else {
+                        data.forEach(item => {
+                            html += `
+                                <div class="news-item">
+                                    <h3>${item.title}</h3>
+                                    <p class="category">${item.category}</p>
+                                    <p>${item.summary}</p>
+                                    <a href="${item.url}" target="_blank" class="read-more">Read Full Article</a>
+                                </div>`;
+                        });
+                    }
+                    resultsDiv.innerHTML = html;
+                    searchBtn.disabled = false;
+                })
+                .catch(error => {
+                    resultsDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                    searchBtn.disabled = false;
+                });
+        }
+
+        function sendChat() {
+            const query = document.getElementById('chatQuery').value.trim();
+            const chatHistory = document.getElementById('chatHistory');
+            const chatBtn = document.getElementById('chatBtn');
+            if (!query) {
+                chatHistory.innerHTML += '<p class="error">Please enter a question.</p>';
+                return;
+            }
+
+            chatBtn.disabled = true;
+            chatHistory.innerHTML += `<div class="chat-message user-message">You: ${query}</div>`;
+            
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const response = data.response || data.error || "No response";
+                    chatHistory.innerHTML += `<div class="chat-message bot-message">Bot: ${response}</div>`;
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    chatBtn.disabled = false;
+                    document.getElementById('chatQuery').value = '';
+                })
+                .catch(error => {
+                    chatHistory.innerHTML += `<div class="chat-message error">Error: ${error.message}</div>`;
+                    chatBtn.disabled = false;
+                });
+        }
+
+        // Allow Enter key to send chat
+        document.getElementById('chatQuery').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendChat();
+        });
+    </script>
+</body>
+</html>
