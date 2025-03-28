@@ -32,7 +32,7 @@ try:
     embedding_model = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=CACHE_DIR).to(device)
     summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6")
     classifier = pipeline("zero-shot-classification", model="cross-encoder/nli-distilroberta-base", device=0 if torch.cuda.is_available() else -1)
-    chatbot = pipeline("text-generation", model="gpt2-medium", device=0 if torch.cuda.is_available() else -1)  # Upgrade to gpt2-medium
+    chatbot = pipeline("text-generation", model="gpt2-medium", device=0 if torch.cuda.is_available() else -1)
     logger.info("Fast models and stronger chatbot loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load models: {str(e)}")
@@ -159,12 +159,11 @@ def chat_with_bot(query):
             do_sample=True,
             temperature=0.7,
             top_k=50,
-            top_p=0.95,
-            truncation=True
+            top_p=0.95
         )[0]['generated_text'].replace(prompt, "").strip()
 
         # Clean up response
-        response = response.split('\n')[0]  # Take first line for conciseness
+        response = response.split('\n')[0]
         if len(response) > 100:
             response = response[:97] + "..."
         return response if response else "I don’t have enough info to answer that right now."
