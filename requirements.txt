@@ -1,11 +1,22 @@
-Flask==2.3.3
-flask-cors==4.0.0
-requests==2.31.0
-sentence-transformers==2.7.0
-transformers==4.40.0
-torch==2.2.0
-faiss-cpu==1.8.0
-numpy==1.26.4
-tensorflow==2.15.0
-sqlite3  # Built-in with Python, no need to install
-flask-limiter==3.5.0
+# Web Framework and Utilities
+flask==2.3.3            # Flask for the web app
+flask-cors==4.0.0       # Cross-Origin Resource Sharing support
+flask-limiter==3.5.0    # Rate limiting for API endpoints
+
+# HTTP Requests
+requests==2.31.0        # For fetching news from NewsAPI
+
+# Machine Learning and NLP
+sentence-transformers==2.2.2  # For fast embedding model (all-MiniLM-L6-v2)
+transformers==4.35.0          # For summarization (distilbart), classification (distilroberta), and chatbot (distilgpt2)
+torch==2.0.1                  # PyTorch for model inference (CPU-only for Spaces)
+faiss-cpu==1.7.4             # FAISS for vector search (CPU version)
+numpy==1.24.3                # For array operations and FAISS
+
+# Optional: SQLite is built into Python, but listed for clarity
+# sqlite3                     # Built-in, no need to install separately
+
+# Additional Dependencies (auto-installed by above, but explicit for clarity)
+scipy==1.10.1                # Required by sentence-transformers
+huggingface-hub==0.16.4      # For downloading models from Hugging Face
+tqdm==4.66.1                 # Progress bars for model downloads
