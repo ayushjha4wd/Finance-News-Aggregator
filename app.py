@@ -39,7 +39,8 @@ try:
     embedding_model = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=CACHE_DIR).to(device)
     summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6", cache_dir=CACHE_DIR)
     classifier = pipeline("zero-shot-classification", model="cross-encoder/nli-distilroberta-base", device=0 if torch.cuda.is_available() else -1, cache_dir=CACHE_DIR)
-    logger.info("Fast models loaded successfully")
+    chatbot = pipeline("text-generation", model="distilgpt2", cache_dir=CACHE_DIR)
+    logger.info("Fast models and chatbot loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load models: {str(e)}")
     raise
@@ -49,7 +50,7 @@ NEWS_API_KEY = "352f67b35a544f408c58c74c654cfd7e"
 NEWS_API_URL = "https://newsapi.org/v2/everything"
 
 # FAISS Vector Database Setup
-vector_dim = embedding_model.get_sentence_embedding_dimension()  # Now 384 for MiniLM
+vector_dim = embedding_model.get_sentence_embedding_dimension()  # 384 for MiniLM
 index = faiss.IndexFlatL2(vector_dim)
 
 # Initialize SQLite DB
@@ -82,7 +83,7 @@ def fetch_news():
 def summarize_text(text, max_length=100):
     try:
         input_length = len(text.split())
-        max_length = min(max_length, input_length // 2)  # Adjust dynamically
+        max_length = min(max_length, input_length // 2)
         summary = summarizer(text, max_length=max_length, min_length=10, do_sample=False)
         return summary[0]['summary_text']
     except Exception as e:
@@ -159,6 +160,28 @@ def search_news(query, k=5):
         logger.error(f"Error in search_news: {str(e)}")
         raise
 
+# Chatbot Logic
+def chat_with_bot(query):
+    try:
+        # First, try to find relevant news
+        news_results = search_news(query, k=3)
+        if isinstance(news_results, list) and news_results:
+            # Use news data to inform response
+            context = "Based on recent news: "
+            for i, item in enumerate(news_results[:2], 1):
+                context += f"{i}. {item['summary']} "
+            prompt = f"{context}\nUser query: {query}\nAnswer concisely:"
+        else:
+            # Fallback to general finance knowledge
+            prompt = f"Answer this finance-related query concisely: {query}"
+
+        # Generate response
+        response = chatbot(prompt, max_length=100, num_return_sequences=1, do_sample=True, temperature=0.7)[0]['generated_text']
+        return response.strip()
+    except Exception as e:
+        logger.error(f"Chatbot error: {str(e)}")
+        return "Sorry, I couldn’t process your query. Try again!"
+
 # Flask Routes
 @app.route("/")
 def home():
@@ -188,6 +211,21 @@ def search():
     except Exception as e:
         logger.error(f"Search endpoint error: {str(e)}")
         return jsonify({"error": f"Failed to search: {str(e)}"}), 500
+
+@app.route("/api/chat", methods=["POST"])
+@limiter.limit("20 per minute")
+def chat():
+    data = request.get_json()
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"error": "Missing 'query' in request body"}), 400
+    try:
+        response = chat_with_bot(query)
+        logger.info(f"Chat response for '{query}': {response}")
+        return jsonify({"response": response})
+    except Exception as e:
+        logger.error(f"Chat endpoint error: {str(e)}")
+        return jsonify({"error": f"Failed to chat: {str(e)}"}), 500
 
 # Run Flask App
 if __name__ == "__main__":
