@@ -30,10 +30,10 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 try:
     embedding_model = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=CACHE_DIR).to(device)
-    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6")  # Remove cache_dir here
+    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6")
     classifier = pipeline("zero-shot-classification", model="cross-encoder/nli-distilroberta-base", device=0 if torch.cuda.is_available() else -1)
-    chatbot = pipeline("text-generation", model="distilgpt2")  # Remove cache_dir here
-    logger.info("Fast models and chatbot loaded successfully")
+    chatbot = pipeline("text-generation", model="gpt2-medium", device=0 if torch.cuda.is_available() else -1)  # Upgrade to gpt2-medium
+    logger.info("Fast models and stronger chatbot loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load models: {str(e)}")
     raise
@@ -67,8 +67,8 @@ def fetch_news():
 def summarize_text(text, max_length=100):
     try:
         input_length = len(text.split())
-        max_length = min(max_length, max(20, input_length // 2))  # Ensure max_length >= 20
-        min_length = min(10, max_length - 1)  # Ensure min_length < max_length
+        max_length = min(max_length, max(20, input_length // 2))
+        min_length = min(10, max_length - 1)
         summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False)
         return summary[0]['summary_text']
     except Exception as e:
@@ -91,7 +91,7 @@ def process_and_store_news():
         if not articles:
             return 0
         clear_news()
-        index = faiss.IndexFlatL2(vector_dim)  # Reset index properly
+        index = faiss.IndexFlatL2(vector_dim)
         logger.info(f"Fetched {len(articles)} articles")
 
         processed_count = 0
@@ -105,7 +105,7 @@ def process_and_store_news():
                 summary = summarize_text(content)
                 category = categorize_news(summary)
                 embedding = embedding_model.encode(summary, convert_to_tensor=True).cpu().detach().numpy()
-                embedding = embedding.reshape(1, -1)  # Ensure 2D shape: (1, vector_dim)
+                embedding = embedding.reshape(1, -1)
 
                 save_news(title, description, url, summary, category, embedding)
                 index.add(embedding)
@@ -145,15 +145,29 @@ def chat_with_bot(query):
     try:
         news_results = search_news(query, k=3)
         if isinstance(news_results, list) and news_results:
-            context = "Based on recent news: "
+            context = "Recent finance news:\n"
             for i, item in enumerate(news_results[:2], 1):
-                context += f"{i}. {item['summary']} "
-            prompt = f"{context}\nUser query: {query}\nAnswer concisely:"
+                context += f"{i}. {item['title']} - {item['summary']}\n"
+            prompt = f"{context}Based on this news, answer the following finance-related question in a concise, natural way (avoid repeating the prompt): {query}"
         else:
-            prompt = f"Answer this finance-related query concisely: {query}"
+            prompt = f"No recent news available. Answer this finance-related question in a concise, natural way based on general knowledge: {query}"
 
-        response = chatbot(prompt, max_length=100, num_return_sequences=1, do_sample=True, temperature=0.7)[0]['generated_text']
-        return response.strip()
+        response = chatbot(
+            prompt,
+            max_length=150,
+            num_return_sequences=1,
+            do_sample=True,
+            temperature=0.7,
+            top_k=50,
+            top_p=0.95,
+            truncation=True
+        )[0]['generated_text'].replace(prompt, "").strip()
+
+        # Clean up response
+        response = response.split('\n')[0]  # Take first line for conciseness
+        if len(response) > 100:
+            response = response[:97] + "..."
+        return response if response else "I don’t have enough info to answer that right now."
     except Exception as e:
         logger.error(f"Chatbot error: {str(e)}")
         return "Sorry, I couldn’t process your query. Try again!"
