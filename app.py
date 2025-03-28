@@ -14,46 +14,36 @@ from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 from database import init_db, save_news, get_all_news, clear_news
 
-# Suppress warnings
 warnings.filterwarnings("ignore")
-
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize Flask App
 app = Flask(__name__)
 CORS(app)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=["100 per day", "10 per hour"])
 
-# Device Setup
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logger.info(f"Using device: {device}")
 
-# Set custom cache directory
 CACHE_DIR = "./cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Load Fast Models
 try:
     embedding_model = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=CACHE_DIR).to(device)
-    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6", cache_dir=CACHE_DIR)
-    classifier = pipeline("zero-shot-classification", model="cross-encoder/nli-distilroberta-base", device=0 if torch.cuda.is_available() else -1, cache_dir=CACHE_DIR)
-    chatbot = pipeline("text-generation", model="distilgpt2", cache_dir=CACHE_DIR)
+    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6")  # Remove cache_dir here
+    classifier = pipeline("zero-shot-classification", model="cross-encoder/nli-distilroberta-base", device=0 if torch.cuda.is_available() else -1)
+    chatbot = pipeline("text-generation", model="distilgpt2")  # Remove cache_dir here
     logger.info("Fast models and chatbot loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load models: {str(e)}")
     raise
 
-# NewsAPI Key
 NEWS_API_KEY = "352f67b35a544f408c58c74c654cfd7e"
 NEWS_API_URL = "https://newsapi.org/v2/everything"
 
-# FAISS Vector Database Setup
-vector_dim = embedding_model.get_sentence_embedding_dimension()  # 384 for MiniLM
+vector_dim = embedding_model.get_sentence_embedding_dimension()
 index = faiss.IndexFlatL2(vector_dim)
 
-# Initialize SQLite DB
 try:
     init_db()
     logger.info("Database initialized")
@@ -61,13 +51,8 @@ except Exception as e:
     logger.error(f"Database initialization failed: {str(e)}")
     raise
 
-# Fetch News from API
 def fetch_news():
-    params = {
-        "q": "finance",
-        "language": "en",
-        "apiKey": NEWS_API_KEY
-    }
+    params = {"q": "finance", "language": "en", "apiKey": NEWS_API_KEY}
     try:
         response = requests.get(NEWS_API_URL, params=params, timeout=10)
         response.raise_for_status()
@@ -79,18 +64,17 @@ def fetch_news():
         logger.error(f"Error fetching news: {str(e)}")
         raise
 
-# Summarize News Articles
 def summarize_text(text, max_length=100):
     try:
         input_length = len(text.split())
-        max_length = min(max_length, input_length // 2)
-        summary = summarizer(text, max_length=max_length, min_length=10, do_sample=False)
+        max_length = min(max_length, max(20, input_length // 2))  # Ensure max_length >= 20
+        min_length = min(10, max_length - 1)  # Ensure min_length < max_length
+        summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False)
         return summary[0]['summary_text']
     except Exception as e:
         logger.warning(f"Summarization error: {str(e)}. Using fallback.")
         return text[:max_length]
 
-# Categorize News
 def categorize_news(text):
     labels = ["Stock Market", "Cryptocurrency", "Forex & Currency", "Economics & Policy", "Personal Finance"]
     try:
@@ -100,7 +84,6 @@ def categorize_news(text):
         logger.warning(f"Classification error: {str(e)}. Using fallback.")
         return "Uncategorized"
 
-# Process and Store News
 def process_and_store_news():
     global index
     try:
@@ -108,7 +91,7 @@ def process_and_store_news():
         if not articles:
             return 0
         clear_news()
-        index.reset()
+        index = faiss.IndexFlatL2(vector_dim)  # Reset index properly
         logger.info(f"Fetched {len(articles)} articles")
 
         processed_count = 0
@@ -122,8 +105,7 @@ def process_and_store_news():
                 summary = summarize_text(content)
                 category = categorize_news(summary)
                 embedding = embedding_model.encode(summary, convert_to_tensor=True).cpu().detach().numpy()
-                if embedding.shape != (vector_dim,):
-                    embedding = embedding.reshape(1, -1)
+                embedding = embedding.reshape(1, -1)  # Ensure 2D shape: (1, vector_dim)
 
                 save_news(title, description, url, summary, category, embedding)
                 index.add(embedding)
@@ -138,7 +120,6 @@ def process_and_store_news():
         logger.error(f"Error in process_and_store_news: {str(e)}")
         raise
 
-# Search News with FAISS
 def search_news(query, k=5):
     try:
         news_data = get_all_news()
@@ -160,29 +141,23 @@ def search_news(query, k=5):
         logger.error(f"Error in search_news: {str(e)}")
         raise
 
-# Chatbot Logic
 def chat_with_bot(query):
     try:
-        # First, try to find relevant news
         news_results = search_news(query, k=3)
         if isinstance(news_results, list) and news_results:
-            # Use news data to inform response
             context = "Based on recent news: "
             for i, item in enumerate(news_results[:2], 1):
                 context += f"{i}. {item['summary']} "
             prompt = f"{context}\nUser query: {query}\nAnswer concisely:"
         else:
-            # Fallback to general finance knowledge
             prompt = f"Answer this finance-related query concisely: {query}"
 
-        # Generate response
         response = chatbot(prompt, max_length=100, num_return_sequences=1, do_sample=True, temperature=0.7)[0]['generated_text']
         return response.strip()
     except Exception as e:
         logger.error(f"Chatbot error: {str(e)}")
         return "Sorry, I couldn’t process your query. Try again!"
 
-# Flask Routes
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -227,6 +202,5 @@ def chat():
         logger.error(f"Chat endpoint error: {str(e)}")
         return jsonify({"error": f"Failed to chat: {str(e)}"}), 500
 
-# Run Flask App
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=7860, debug=False)
